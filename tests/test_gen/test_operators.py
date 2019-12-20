@@ -1,5 +1,6 @@
 import pytest
 import numpy as np
+import scipy.sparse as sp
 from numpy.testing import assert_allclose
 import quimb as qu
 
@@ -161,7 +162,45 @@ class TestGates:
     def test_fsim(self):
         assert_allclose(qu.fsim(- qu.pi / 2, 0.0), qu.iswap(), atol=1e-12)
 
+class TestSpinHamiltonian
+    @pytest.mark.parametrize('cyclic', [False, True])
+    @pytest.mark.parametrize('sparse', [False, True])
+    def test_via_hamj1j2(self, cyclic, sparse):
+        n, j1, j2, bz = 5, 1.0, 0.5, 0.3
+        H_check = qu.ham_j1j2(n, j1=j1, j2=j2, bz=bz, cyclic=cyclic, sparse = sparse)
+        coeffs_dict = {}
+        coeffs_dict['zz'] = sp.diags(([j1]*(n-1), [j2]*(n-2)), \
+                                    offsets = (1, 2)).toarray()
+        if cyclic:
+            coeffs_dict['zz'][-1,0] += j1
+            coeffs_dict['zz'][-1,1] += j2
+            coeffs_dict['zz'][-2,0] += j2
+        coeffs_dict['yy'] = coeffs_dict['xx'] = coeffs_dict['zz']
+        coeffs_dict['z'] = np.array([bz]*n)
+        H = qu.spin_hamiltonian(coeffs_dict = coeffs_dict, sparse = sparse)
+        if sparse:
+            assert qu.issparse(H)
+        else:
+            assert qu.isdense(H)
+        assert_allclose(qu.qu(H, sparse=False), qu.qu(H_check, sparse=False))
 
+    @pytest.mark.parametrize('cyclic', [False, True])
+    @pytest.mark.parametrize('sparse', [False, True])
+    def test_via_ham_ising(self, cyclic, sparse):
+        n, jz, bx = 5, 1.0, 0.5
+        H_check = qu.ham_ising(5, jz=jz, bx=bx, sparse=sparse, cyclic=cyclic)
+        coeffs_dict = {}
+        coeffs_dict['zz'] = sp.diags(([jz]*(n-1),), offsets = (1,)).toarray()
+        if cyclic:
+            coeffs_dict['zz'][-1,0] += jz
+        coeffs_dict['x'] = np.array([-bx]*n)
+        H = qu.spin_hamiltonian(coeffs_dict = coeffs_dict, sparse = sparse)
+        if sparse:
+            assert qu.issparse(H)
+        else:
+            assert qu.isdense(H)
+        assert_allclose(qu.qu(H, sparse=False), qu.qu(H_check, sparse=False))
+               
 class TestHamHeis:
     def test_ham_heis_2(self):
         h = qu.ham_heis(2, cyclic=False)

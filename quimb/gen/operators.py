@@ -503,8 +503,8 @@ def pauli_string(xyz_string, inds, site_dim = 2, num_sites = None, \
 
 @hamiltonian_builder
 def spin_hamiltonian(coeffs_dict = None, site_dim = 2, num_sites = None, \
-                     coo_build = False, parallel = False, ownership = None, \
-                     **kwargs):
+                     unitary_spin_ops = False, coo_build = False, parallel = False, \
+                     ownership = None, **kwargs):
     """Create an arbitrary quantum spin-1/2 (or spin-1) Hamiltonian
     
     Parameters
@@ -557,13 +557,18 @@ def spin_hamiltonian(coeffs_dict = None, site_dim = 2, num_sites = None, \
             num_sites = max([max(arr.shape) for arr in coeffs_dict.values()])
         ham = 0
         for xyz_string, coeffs in coeffs_dict.items():
+            xyz_term = 0
             for inds in itertools.product(*tuple(range(d) for d in coeffs.shape)):
                 if coeffs[inds] == 0.0:
                     continue
-                ham += coeffs[inds]*pauli_string(xyz_string, inds, num_sites = num_sites,
-                                                 sparse = True, coo_build = coo_build, \
-                                                 parallel = parallel, ownership = ownership, \
-                                                 **kwargs)
+                xyz_term += coeffs[inds]*\
+                            pauli_string(xyz_string, inds, num_sites = num_sites, \
+                                         sparse = True, coo_build = coo_build, \
+                                         parallel = parallel, ownership = ownership, \
+                                         **kwargs)
+            spin_scale = (1.0 if unitary_spin_ops else ((site_dim-1)/2))**len(xyz_string)
+            ham += (spin_scale)*xyz_term
+            
     return ham
 
 @functools.lru_cache(maxsize=8)
