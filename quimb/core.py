@@ -346,7 +346,6 @@ def issparse(qob):
     """
     return isinstance(qob, sp.spmatrix)
 
-
 def isdense(qob):
     """Checks if ``qob`` is explicitly dense.
     """

@@ -110,6 +110,7 @@ from .gen.operators import (
     cX,
     cY,
     cZ,
+    spin_hamiltonian,
     ham_heis,
     ham_ising,
     ham_XY,

@@ -451,6 +451,120 @@ def hamiltonian_builder(fn):
 
     return ham_fn
 
+@functools.lru_cache(maxsize=8)
+@hamiltonian_builder
+def pauli_string(xyz_string, inds, site_dim = 2, num_sites = None, \
+                 coo_build = False, parallel = False, ownership = None, **kwargs):
+    """String of pauli operators, padded wth identities where appropriate
+
+    Parameters
+    ----------
+    xyz_string : str
+        Sequence of spatial directions, upper or lower case from ``{'I', 'X', 'Y',
+        'Z'}``.
+    inds : tuple of int
+        Indices of the dimensions to place pauli operators on. If len(inds) > len(xyz_string),
+        pauli operators will be placed cyclically.
+    site_dim : int, optional
+        Dimension of spin operator (e.g. 3 for spin-1), defaults to 2 for
+        spin half.
+    num_sites : int, optional
+        Number of sites in the spin system the pauli string will act on. If None,
+        the minimum number compatible wth ``inds`` will be used.
+    coo_build : bool, optional
+        Whether to build the intermediary matrices using the ``'coo'``
+        format - can be faster to build sparse in this way, then
+        convert to chosen format, including dense.
+    parallel : bool, optional
+        Whether to build the operator in parallel using threads (only good
+        for big (d > 2**16) operators).
+    ownership : (int, int), optional
+        If given, only construct the rows in ``range(*ownership)``. Such that
+        the  final operator is actually ``X[slice(*ownership), :]``. Useful for
+        constructing operators in parallel, e.g. for MPI.
+    sparse : bool, optional
+        Whether to construct the new operator in sparse form.
+
+    Returns
+    -------
+    P : immutable operator
+        The pauli string operator.
+    """
+    # TODO: Make inds accept co-ordinates like in ikron by making num_sites act as a shape
+    if num_sites is None: 
+        num_sites = max(inds) + 1
+    try:
+        pauli_ops = tuple(pauli(xyz, dim=site_dim, **kwargs) for xyz in xyz_string)
+    except KeyError:
+        raise ValueError("xyz_string must be an interable consisting only of the characters "
+                         "'i', 'x', 'y', 'z' (lower or upper case) or the ints 0, 1, 2, 3")
+    return ikron(pauli_ops, (site_dim,)*num_sites, inds, sparse=True, \
+                    coo_build=coo_build, parallel=parallel, ownership=ownership)
+
+@hamiltonian_builder
+def spin_hamiltonian(coeffs_dict = None, site_dim = 2, num_sites = None, \
+                     coo_build = False, parallel = False, ownership = None, \
+                     **kwargs):
+    """Create an arbitrary quantum spin-1/2 (or spin-1) Hamiltonian
+    
+    Parameters
+    ----------
+    coeffs_dict : dict of str, optional
+        Dict of coefficients on the Pauli strings that constitute the Hamiltonian terms.
+        The str keys should be sequence of spatial directions, upper or lower case from 
+        ``{'I', 'X', 'Y', 'Z'}`` and the values should be arrays with ``len(key)`` 
+        dimensions of length ``num_sites`` such that ``coeffs_dict[key][inds]`` will be
+        the coefficient on the term given by a call to ``pauli_string`` of the form
+        ``pauli_string(key, inds, site_dim, num_sites, ...)``.
+    site_dim : int, optional
+        Dimension of spin operator (e.g. 3 for spin-1), defaults to 2 for
+        spin half.
+    num_sites : int, optional
+        Number of sites in the spin system the Hamiltonian will act on. If None,
+        the minimum number compatible with the shapes of the coefficient arrays
+        in ``coeff_dicts`` will be used.
+    coo_build : bool, optional
+        Whether to build the intermediary matrices using the ``'coo'``
+        format - can be faster to build sparse in this way, then
+        convert to chosen format, including dense.
+    parallel : bool, optional
+        Whether to build the operator in parallel using threads (only good
+        for big (d > 2**16) operators).
+    ownership : (int, int), optional
+        If given, only construct the rows in ``range(*ownership)``. Such that
+        the  final operator is actually ``X[slice(*ownership), :]``. Useful for
+        constructing operators in parallel, e.g. for MPI.
+    sparse : bool, optional
+        Whether to construct the new operator in sparse form.
+
+    Returns
+    -------
+    H : immutable operator
+        The Hamiltonian.
+    """
+    # TODO: - Make the coeffs_dict description not refer to pauli_string calls
+    #       - Make cachable by not using dict argument
+    if coeffs_dict is None or coeffs_dict == {}:
+        if num_sites is None:
+            ham = qu(0, sparse = True, **kwargs)
+        else:
+            zero = qu([[0]*site_dim]*site_dim, **kwargs)
+            ham = ikron(zero, (site_dim,)*num_sites, (1,), sparse = True, \
+                        coo_build=coo_build, parallel = parallel, ownership = ownership, \
+                        **kwargs)
+    else:
+        if num_sites is None:
+            num_sites = max([max(arr.shape) for arr in coeffs_dict.values()])
+        ham = 0
+        for xyz_string, coeffs in coeffs_dict.items():
+            for inds in itertools.product(*tuple(range(d) for d in coeffs.shape)):
+                if coeffs[inds] == 0.0:
+                    continue
+                ham += coeffs[inds]*pauli_string(xyz_string, inds, num_sites = num_sites,
+                                                 sparse = True, coo_build = coo_build, \
+                                                 parallel = parallel, ownership = ownership, \
+                                                 **kwargs)
+    return ham
 
 @functools.lru_cache(maxsize=8)
 @hamiltonian_builder
